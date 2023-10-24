@@ -73,6 +73,7 @@ pub fn rust_main() -> ! {
     );
     error!("[kernel] .bss [{:#x}, {:#x})", sbss as usize, ebss as usize);
 
+    
     use crate::board::QEMUExit;
     crate::board::QEMU_EXIT_HANDLE.exit_success(); // CI autotest success
                                                    //crate::board::QEMU_EXIT_HANDLE.exit_failure(); // CI autoest failed
