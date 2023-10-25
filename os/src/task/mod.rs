@@ -42,9 +42,9 @@ pub struct TaskManager {
 
 /// The task manager inner in 'UPSafeCell'
 struct TaskManagerInner {
-    /// task list
+    /// task list.
     tasks: Vec<TaskControlBlock>,
-    /// id of current `Running` task
+    /// id of current `Running` task.
     current_task: usize,
 }
 
