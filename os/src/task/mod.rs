@@ -74,9 +74,9 @@ lazy_static! {
 }
 /// TaskInfo
 pub struct TaskInfo{
-    /// task status
+    /// task status.
     pub status: TaskStatus,
-    /// syscall times
+    /// syscall times.
     pub syscall_times: [u32; MAX_SYSCALL_NUM],
     /// ms
     pub time: usize,
