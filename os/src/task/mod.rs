@@ -14,13 +14,13 @@ mod switch;
 #[allow(clippy::module_inception)]
 mod task;
 
-use crate::config::MAX_APP_NUM;
+use crate::config::{MAX_APP_NUM, MAX_SYSCALL_NUM};
 use crate::loader::{get_num_app, init_app_cx};
 use crate::sync::UPSafeCell;
+use crate::timer::get_time_ms;
 use lazy_static::*;
 use switch::__switch;
 pub use task::{TaskControlBlock, TaskStatus};
-
 pub use context::TaskContext;
 
 /// The task manager, where all the tasks are managed.
@@ -54,6 +54,8 @@ lazy_static! {
         let mut tasks = [TaskControlBlock {
             task_cx: TaskContext::zero_init(),
             task_status: TaskStatus::UnInit,
+            syscall_times: [0u32; MAX_SYSCALL_NUM],
+            start_at: get_time_ms()
         }; MAX_APP_NUM];
         for (i, task) in tasks.iter_mut().enumerate() {
             task.task_cx = TaskContext::goto_restore(init_app_cx(i));
@@ -70,7 +72,15 @@ lazy_static! {
         }
     };
 }
-
+/// TaskInfo
+pub struct TaskInfo{
+    /// task status
+    pub status: TaskStatus,
+    /// syscall times
+    pub syscall_times: [u32; MAX_SYSCALL_NUM],
+    /// ms
+    pub time: usize,
+}
 impl TaskManager {
     /// Run the first task in task list.
     ///
@@ -135,6 +145,22 @@ impl TaskManager {
             panic!("All applications completed!");
         }
     }
+
+    fn current_info(&self)-> TaskInfo{  
+        let inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        let status = inner.tasks[current].task_status;
+        let syscall_times = inner.tasks[current].syscall_times;
+        let start_at = inner.tasks[current].start_at;
+        TaskInfo { status , syscall_times , time: get_time_ms() - start_at }
+    }
+
+    fn current_syscall_add(&self, syscall_index: usize){
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].syscall_times[syscall_index]+=1;
+    }
+
 }
 
 /// Run the first task in task list.
@@ -168,4 +194,13 @@ pub fn suspend_current_and_run_next() {
 pub fn exit_current_and_run_next() {
     mark_current_exited();
     run_next_task();
+}
+
+/// Get task info.
+pub fn get_task_info()->TaskInfo{
+    TASK_MANAGER.current_info()
+}
+/// current syscall +1 
+pub fn current_syscall_add(syscall: usize){
+    TASK_MANAGER.current_syscall_add(syscall);
 }
