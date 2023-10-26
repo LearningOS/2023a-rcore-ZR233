@@ -1,9 +1,11 @@
 //! Process management syscalls
+use core::{mem::size_of, ptr::slice_from_raw_parts};
+
 use crate::{
     config::MAX_SYSCALL_NUM,
     task::{
-        change_program_brk, exit_current_and_run_next, suspend_current_and_run_next, TaskStatus,
-    },
+        change_program_brk, exit_current_and_run_next, suspend_current_and_run_next, TaskStatus, current_user_token, get_task_info,
+    }, mm::translated_byte_buffer, timer,
 };
 
 #[repr(C)]
@@ -17,11 +19,11 @@ pub struct TimeVal {
 #[allow(dead_code)]
 pub struct TaskInfo {
     /// Task status in it's life cycle
-    status: TaskStatus,
+    pub status: TaskStatus,
     /// The numbers of syscall called by task
-    syscall_times: [u32; MAX_SYSCALL_NUM],
+    pub syscall_times: [u32; MAX_SYSCALL_NUM],
     /// Total running time of task
-    time: usize,
+    pub time: usize,
 }
 
 /// task exits and submit an exit code
@@ -38,20 +40,48 @@ pub fn sys_yield() -> isize {
     0
 }
 
+fn set_value<T>(ptr: *mut T, v: &T){
+    let token = current_user_token();
+    let len = size_of::<T>();
+    unsafe{
+        let buff = translated_byte_buffer(token, ptr as _, len);
+        let ts_ptr = v as *const T as *const u8;
+        let ts_buff = &*slice_from_raw_parts(ts_ptr, len);
+        let mut i = 0;
+        for page in buff{
+            for b in page{
+                *b = ts_buff[i];
+                i+=1;
+            }
+        }
+
+    }
+}
+
 /// YOUR JOB: get time with second and microsecond
 /// HINT: You might reimplement it with virtual memory management.
 /// HINT: What if [`TimeVal`] is splitted by two pages ?
 pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
     trace!("kernel: sys_get_time");
-    -1
+    let t = timer::get_time_us();
+    let sec = t/ 1000_000;
+    let ts = TimeVal{
+        sec,
+        usec: t - sec * 1000_000,
+    };
+
+    set_value(_ts, &ts);
+    0
 }
 
 /// YOUR JOB: Finish sys_task_info to pass testcases
 /// HINT: You might reimplement it with virtual memory management.
 /// HINT: What if [`TaskInfo`] is splitted by two pages ?
 pub fn sys_task_info(_ti: *mut TaskInfo) -> isize {
-    trace!("kernel: sys_task_info NOT IMPLEMENTED YET!");
-    -1
+    trace!("kernel: sys_task_info");
+    let info = get_task_info();
+    set_value(_ti, &info);
+    0
 }
 
 // YOUR JOB: Implement mmap.
