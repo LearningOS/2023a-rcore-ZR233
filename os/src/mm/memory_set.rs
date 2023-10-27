@@ -32,11 +32,15 @@ lazy_static! {
     /// The kernel's initial memory mapping(kernel address space)
     pub static ref KERNEL_SPACE: Arc<UPSafeCell<MemorySet>> =
         Arc::new(unsafe { UPSafeCell::new(MemorySet::new_kernel()) });
+        pub static ref ANONYMOUS_SPACE: Arc<UPSafeCell<MemorySet>> =
+        Arc::new(unsafe { UPSafeCell::new(MemorySet::new_kernel()) });
 }
+
 /// address space
 pub struct MemorySet {
     page_table: PageTable,
     areas: Vec<MapArea>,
+    anonymous_data_frames: BTreeMap<VirtPageNum, FrameTracker>,
 }
 
 impl MemorySet {
@@ -45,6 +49,7 @@ impl MemorySet {
         Self {
             page_table: PageTable::new(),
             areas: Vec::new(),
+            anonymous_data_frames: BTreeMap::new(),
         }
     }
     /// Get the page table token
@@ -143,6 +148,7 @@ impl MemorySet {
         );
         memory_set
     }
+
     /// Include sections in elf and trampoline and TrapContext and user stack,
     /// also returns user_sp_base and entry point.
     pub fn from_elf(elf_data: &[u8]) -> (Self, usize, usize) {
@@ -261,6 +267,53 @@ impl MemorySet {
         } else {
             false
         }
+    }
+    /// 申请内存
+    pub fn mmap(&mut self, start: VirtAddr, end: VirtAddr, pte_flag: u8) -> isize {
+        let mut pte = PTEFlags::from_bits(pte_flag).unwrap();
+        pte |= PTEFlags::V;
+        pte |= PTEFlags::U;
+        // debug!("pte flag: {:?}", pte);
+        let vpn_range = VPNRange::new(start.floor(), end.ceil());
+
+        for vpn in vpn_range {
+            if let Some(pte) = self.translate(vpn) {
+                warn!("has some");
+                if pte.is_valid() {
+                    warn!("is valid");
+                    return -1;
+                }
+            }
+
+            match frame_alloc() {
+                Some(frame) => {
+                    let ppn = frame.ppn;
+                    self.anonymous_data_frames.insert(vpn, frame);
+                    self.page_table.map(vpn, ppn, pte);
+                }
+                None => return -1,
+            }
+        }
+        0
+    }
+    /// 释放内存
+    pub fn munmap(&mut self, start: VirtAddr, end: VirtAddr) -> isize {
+        let vpn_range = VPNRange::new(start.floor(), end.ceil());
+        for vpn in vpn_range {
+            match self.translate(vpn) {
+                Some(pte) => {
+                    if !pte.is_valid() {
+                        return -1;
+                    }
+
+                    self.anonymous_data_frames.remove(&vpn);
+                    self.page_table.unmap(vpn);
+                }
+                None => return -1,
+            }
+        }
+
+        0
     }
 }
 /// map area structure, controls a contiguous piece of virtual memory

@@ -15,15 +15,16 @@ mod switch;
 mod task;
 
 use crate::loader::{get_app_data, get_num_app};
+use crate::mm::VirtAddr;
 use crate::sync::UPSafeCell;
+use crate::syscall::TaskInfo;
 use crate::timer::get_time_ms;
 use crate::trap::TrapContext;
 use alloc::vec::Vec;
+pub use context::TaskContext;
 use lazy_static::*;
 use switch::__switch;
 pub use task::{TaskControlBlock, TaskStatus};
-use crate::syscall::TaskInfo;
-pub use context::TaskContext;
 
 /// The task manager, where all the tasks are managed.
 ///
@@ -155,20 +156,56 @@ impl TaskManager {
         }
     }
 
-    fn current_info(&self)-> TaskInfo{  
+    fn current_info(&self) -> TaskInfo {
         let inner = self.inner.exclusive_access();
         let current = inner.current_task;
         let status = inner.tasks[current].task_status;
         let syscall_times = inner.tasks[current].syscall_times;
         let start_at = inner.tasks[current].start_at;
-        TaskInfo { status , syscall_times , time: get_time_ms() - start_at }
+        TaskInfo {
+            status,
+            syscall_times,
+            time: get_time_ms() - start_at,
+        }
     }
 
-    fn current_syscall_add(&self, syscall_index: usize){
+    fn current_syscall_add(&self, syscall_index: usize) {
         let mut inner = self.inner.exclusive_access();
         let current = inner.current_task;
-        inner.tasks[current].syscall_times[syscall_index]+=1;
+        inner.tasks[current].syscall_times[syscall_index] += 1;
     }
+
+    fn mmap(&self, _start: usize, _len: usize, pte: u8) -> isize {
+        
+        let mut inner: core::cell::RefMut<'_, TaskManagerInner> = self.inner.exclusive_access();
+        let current = inner.current_task;
+        let end = _start + _len ;
+        let start_va = VirtAddr::from(_start);
+        let end_va = VirtAddr::from(end);       
+        if !start_va.aligned(){
+            return  -1;
+        }
+        inner.tasks[current].memory_set.mmap(
+            start_va,
+            end_va,
+            pte,
+        )
+    }
+
+
+    fn munmap(&self, _start: usize, _len: usize)->isize{
+                let mut inner: core::cell::RefMut<'_, TaskManagerInner> = self.inner.exclusive_access();
+        let current = inner.current_task;
+        let end = _start + _len;
+        let start_va = VirtAddr::from(_start);
+        let end_va = VirtAddr::from(end);       
+
+        inner.tasks[current].memory_set.munmap(
+            start_va,
+            end_va,
+        )
+    }
+
 }
 
 /// Run the first task in task list.
@@ -219,10 +256,20 @@ pub fn change_program_brk(size: i32) -> Option<usize> {
     TASK_MANAGER.change_current_program_brk(size)
 }
 /// Get task info.
-pub fn get_task_info()->TaskInfo{
+pub fn get_task_info() -> TaskInfo {
     TASK_MANAGER.current_info()
 }
-/// current syscall +1 
-pub fn current_syscall_add(syscall: usize){
+/// current syscall +1
+pub fn current_syscall_add(syscall: usize) {
     TASK_MANAGER.current_syscall_add(syscall);
+}
+/// current_mmap
+pub fn current_mmap(start: usize, len:usize, pte:u8) -> isize {
+    TASK_MANAGER.mmap(start, len, pte)
+    
+}
+/// current_mmap
+pub fn current_munmap(start: usize, len:usize) -> isize {
+    TASK_MANAGER.munmap(start, len)
+    
 }

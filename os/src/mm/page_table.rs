@@ -1,5 +1,4 @@
 //! Implementation of [`PageTableEntry`] and [`PageTable`].
-
 use super::{frame_alloc, FrameTracker, PhysPageNum, StepByOne, VirtAddr, VirtPageNum};
 use alloc::vec;
 use alloc::vec::Vec;
@@ -134,10 +133,16 @@ impl PageTable {
     }
     /// remove the map between virtual page number and physical page number
     #[allow(unused)]
-    pub fn unmap(&mut self, vpn: VirtPageNum) {
+    pub fn unmap(&mut self, vpn: VirtPageNum)->isize {
         let pte = self.find_pte(vpn).unwrap();
+        if(!pte.is_valid()){
+            error!( "vpn {:?} is invalid before unmapping", vpn);
+            return  -1;
+        }
+
         assert!(pte.is_valid(), "vpn {:?} is invalid before unmapping", vpn);
         *pte = PageTableEntry::empty();
+        0
     }
     /// get the page table entry from the virtual page number
     pub fn translate(&self, vpn: VirtPageNum) -> Option<PageTableEntry> {
@@ -170,4 +175,18 @@ pub fn translated_byte_buffer(token: usize, ptr: *const u8, len: usize) -> Vec<&
         start = end_va.into();
     }
     v
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    #[test]
+    fn port_pte() {
+        let _port = 0x111;
+        let pte = _port << 1;
+
+        let pte = PTEFlags::from_bits(pte as u8).unwrap() | PTEFlags::V;
+        let want = PTEFlags::V | PTEFlags::R | PTEFlags::W | PTEFlags::X;
+        assert_eq!(pte, want);
+    }
 }

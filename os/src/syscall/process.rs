@@ -1,12 +1,7 @@
 //! Process management syscalls
 use core::{mem::size_of, ptr::slice_from_raw_parts};
 
-use crate::{
-    config::MAX_SYSCALL_NUM,
-    task::{
-        change_program_brk, exit_current_and_run_next, suspend_current_and_run_next, TaskStatus, current_user_token, get_task_info,
-    }, mm::translated_byte_buffer, timer,
-};
+use crate::{config::{MAX_SYSCALL_NUM, self}, mm::*, task::*, timer};
 
 #[repr(C)]
 #[derive(Debug)]
@@ -40,21 +35,20 @@ pub fn sys_yield() -> isize {
     0
 }
 
-fn set_value<T>(ptr: *mut T, v: &T){
+fn set_value<T>(ptr: *mut T, v: &T) {
     let token = current_user_token();
     let len = size_of::<T>();
-    unsafe{
+    unsafe {
         let buff = translated_byte_buffer(token, ptr as _, len);
         let ts_ptr = v as *const T as *const u8;
         let ts_buff = &*slice_from_raw_parts(ts_ptr, len);
         let mut i = 0;
-        for page in buff{
-            for b in page{
+        for page in buff {
+            for b in page {
                 *b = ts_buff[i];
-                i+=1;
+                i += 1;
             }
         }
-
     }
 }
 
@@ -64,10 +58,9 @@ fn set_value<T>(ptr: *mut T, v: &T){
 pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
     trace!("kernel: sys_get_time");
     let t = timer::get_time_us();
-    let sec = t/ 1000_000;
-    let ts = TimeVal{
-        sec,
-        usec: t - sec * 1000_000,
+    let ts = TimeVal {
+        sec: t / 1000_000,
+        usec: t % 1000_000,
     };
 
     set_value(_ts, &ts);
@@ -83,17 +76,33 @@ pub fn sys_task_info(_ti: *mut TaskInfo) -> isize {
     set_value(_ti, &info);
     0
 }
-
 // YOUR JOB: Implement mmap.
 pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
-    trace!("kernel: sys_mmap NOT IMPLEMENTED YET!");
-    -1
+    trace!("kernel: sys_mmap");
+    debug!("mmap _start: {:x} _len: {:x} _port: {:x}", _start, _len, _port);
+
+    if _start > config::MEMORY_END{
+        return  -1;
+    }
+
+    if _port & !0x7 != 0 {
+        return -1;
+    }
+    if _port & 0x7 == 0 {
+        return -1;
+    }
+    let pte = _port << 1;
+    let r =current_mmap(_start, _len, pte as u8);
+    debug!("r: {r}");
+    r
 }
 
 // YOUR JOB: Implement munmap.
 pub fn sys_munmap(_start: usize, _len: usize) -> isize {
     trace!("kernel: sys_munmap NOT IMPLEMENTED YET!");
-    -1
+    debug!("munmap: {:x} {:x}", _start, _len);
+    // current_mmap(start, len, ple)
+    current_munmap(_start, _len)
 }
 /// change data segment size
 pub fn sys_sbrk(size: i32) -> isize {
