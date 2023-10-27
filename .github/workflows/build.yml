@@ -5,7 +5,8 @@ on: [push]
 env:
   CARGO_TERM_COLOR: always
   rust_toolchain: nightly
-
+  RUSTUP_DIST_SERVER: ""
+  RUSTUP_UPDATE_ROOT: ""
 jobs:
   build-doc:
     if: github.repository == 'LearningOS/rCore-Tutorial-Code-2023A'
