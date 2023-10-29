@@ -303,6 +303,9 @@ impl MemorySet {
         }
     }   /// 申请内存
     pub fn mmap(&mut self, start: VirtAddr, end: VirtAddr, pte_flag: u8) -> isize {
+        if !start.aligned(){
+            return  -1;
+        }
         let mut pte = PTEFlags::from_bits(pte_flag).unwrap();
         pte |= PTEFlags::V;
         pte |= PTEFlags::U;
