@@ -1,5 +1,4 @@
 //! Implementation of [`PageTableEntry`] and [`PageTable`].
-use super::address::VPNRange;
 use super::{frame_alloc, FrameTracker, PhysAddr, PhysPageNum, StepByOne, VirtAddr, VirtPageNum};
 use alloc::string::String;
 use alloc::vec;
@@ -214,47 +213,59 @@ pub fn translated_refmut<T>(token: usize, ptr: *mut T) -> &'static mut T {
         .unwrap()
         .get_mut()
 }
-/// mmap
-pub fn mmap(token: usize, start: VirtAddr, end: VirtAddr, flags: u8) -> isize {
-    if !start.aligned() {
-        return -1;
-    }
-    let mut flags = PTEFlags::from_bits(flags).unwrap();
-    flags |= PTEFlags::V;
-    flags |= PTEFlags::U;
+// /// mmap
+// pub fn mmap(token: usize, start: VirtAddr, end: VirtAddr, flags: u8) -> isize {
+//     if !start.aligned() {
+//         error!("start not aligned");
+//         return -1;
+//     }
+//     let mut flags = PTEFlags::from_bits(flags).unwrap();
+//     flags |= PTEFlags::V;
+//     flags |= PTEFlags::U;
+//     let start_vpn = start.floor();
+//     let end_vpn = end.ceil();
+//     debug!("mmap  {:?} - {:?}", start_vpn, end_vpn);
+//     let range = VPNRange::new(start_vpn, end_vpn);
+//     let mut page_table = PageTable::from_token(token);
+//     for vpn in range {
+//         debug!("new {:?}", vpn);
+//         if let Some(pte) = page_table.find_pte(vpn) {
+//             if pte.is_valid() {
+//                 error!("vpn {:?} exist", vpn);
+//                 return -1;
+//             }
+//         }
+//         match frame_alloc() {
+//             Some(frame) => {
+//                 let ppn = frame.ppn;
+//                 page_table.map(vpn, ppn, flags);
+//             }
+//             None => {
+//                 error!("alloc fail");
+//                 return -1;
+//             }
+//         }
+//     }
 
-    let range = VPNRange::new(start.floor(), end.ceil());
-    let mut page_table = PageTable::from_token(token);
-    for vpn in range {
-        if let Some(pte) = page_table.translate(vpn) {
-            if pte.is_valid() {
-                warn!("is valid");
-                return -1;
-            }
-        }
-        match frame_alloc() {
-            Some(frame) => {
-                let ppn = frame.ppn;
-                page_table.map(vpn, ppn, flags);
-            }
-            None => return -1,
-        }
-    }
+//     0
+// }
 
-    0
-}
-
-/// munmap
-pub fn munmap(token: usize, start: VirtAddr, end: VirtAddr) -> isize {
-    let range = VPNRange::new(start.floor(), end.ceil());
-    let mut page_table = PageTable::from_token(token);
-    for vpn in range {
-        if let Some(pte) = page_table.translate(vpn) {
-            if pte.is_valid() {
-                page_table.unmap(vpn);
-                return 0;
-            }
-        }
-    }
-    -1
-}
+// /// munmap
+// pub fn munmap(token: usize, start: VirtAddr, end: VirtAddr) -> isize {
+//     let range = VPNRange::new(start.floor(), end.ceil());
+//     let mut page_table = PageTable::from_token(token);
+//     for vpn in range {
+//         if let Some(pte) = page_table.find_pte(vpn) {
+//             if pte.is_valid() {
+//                 page_table.unmap(vpn);
+//             } else {
+//                 error!("vpn {:?} pte not valid", vpn);
+//                 return -1;
+//             }
+//         } else {
+//             error!("vpn {:?} pte not exist", vpn);
+//             return -1;
+//         }
+//     }
+//     0
+// }

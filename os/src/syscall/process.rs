@@ -4,7 +4,7 @@ use alloc::sync::Arc;
 use crate::{
     config::{self, MAX_SYSCALL_NUM},
     loader::get_app_data_by_name,
-    mm::{mmap, munmap, translated_refmut, translated_str, VirtAddr},
+    mm::{translated_refmut, translated_str, VirtAddr},
     task::{
         add_task, current_task, current_user_token, exit_current_and_run_next,
         suspend_current_and_run_next, TaskStatus,
@@ -150,7 +150,12 @@ pub fn sys_task_info(_ti: *mut TaskInfo) -> isize {
 
 /// YOUR JOB: Implement mmap.
 pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
-    debug!("kernel:pid[{}] sys_mmap start {:x} len {:x}", current_task().unwrap().pid.0, _start, _len);
+    debug!(
+        "kernel:pid[{}] sys_mmap start {:x} len {:x}",
+        current_task().unwrap().pid.0,
+        _start,
+        _len
+    );
     if _start > config::MEMORY_END {
         return -1;
     }
@@ -164,9 +169,10 @@ pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
     let start = VirtAddr::from(_start);
     let end = VirtAddr::from(_start + _len);
     let flags = _port << 1;
-    
 
-    mmap(current_user_token(), start, end, flags as _)
+    debug!("{:?} - {:?}", start, end);
+    current_task().unwrap().inner_exclusive_access().memory_set.mmap(start, end, flags as _)
+    // mmap(current_user_token(), start, end, flags as _)
 }
 
 /// YOUR JOB: Implement munmap.
@@ -174,7 +180,8 @@ pub fn sys_munmap(_start: usize, _len: usize) -> isize {
     trace!("kernel:pid[{}] sys_munmap", current_task().unwrap().pid.0);
     let start = VirtAddr::from(_start);
     let end = VirtAddr::from(_start + _len);
-    munmap(current_user_token(), start, end)
+    // munmap(current_user_token(), start, end)
+    current_task().unwrap().inner_exclusive_access().memory_set.munmap(start, end)
 }
 
 /// change data segment size
