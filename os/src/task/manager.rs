@@ -18,7 +18,7 @@ impl TaskManager {
     pub fn new() -> Self {
         Self {
             // ready_queue: VecDeque::new(),
-            ready_queue: Vec::new()
+            ready_queue: Vec::new(),
         }
     }
     /// Add process back to ready queue
@@ -31,19 +31,24 @@ impl TaskManager {
         // self.ready_queue.pop_front()
         let mut index = 0;
         let mut min_stride = usize::MAX;
-        if self.ready_queue.is_empty(){
+        if self.ready_queue.is_empty() {
             return None;
         }
 
-        for i in 0.. self.ready_queue.len(){
+        for i in 0..self.ready_queue.len() {
             let stride = self.ready_queue[i].inner_exclusive_access().stride;
-            if stride < min_stride{
+            if stride < min_stride {
                 index = i;
                 min_stride = stride;
             }
         }
-        
-        Some(self.ready_queue.remove(index))
+        let task = self.ready_queue.remove(index);
+        {
+            let mut ac = task.inner_exclusive_access();
+            ac.stride += ac.get_pass();
+        }
+
+        Some(task)
     }
 }
 
