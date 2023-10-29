@@ -2,9 +2,9 @@
 use alloc::sync::Arc;
 
 use crate::{
-    config::{MAX_SYSCALL_NUM, self},
+    config::{self, MAX_SYSCALL_NUM},
     loader::get_app_data_by_name,
-    mm::{mmap, translated_refmut, translated_str, VirtAddr, munmap},
+    mm::{mmap, munmap, translated_refmut, translated_str, VirtAddr},
     task::{
         add_task, current_task, current_user_token, exit_current_and_run_next,
         suspend_current_and_run_next, TaskStatus,
@@ -95,6 +95,7 @@ pub fn sys_waitpid(pid: isize, exit_code_ptr: *mut i32) -> isize {
         .iter()
         .any(|p| pid == -1 || pid as usize == p.getpid())
     {
+        error!("pid [{pid}] not found");
         return -1;
         // ---- release current PCB
     }
@@ -123,10 +124,7 @@ pub fn sys_waitpid(pid: isize, exit_code_ptr: *mut i32) -> isize {
 /// HINT: You might reimplement it with virtual memory management.
 /// HINT: What if [`TimeVal`] is splitted by two pages ?
 pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
-    trace!(
-        "kernel:pid[{}] sys_get_time NOT IMPLEMENTED",
-        current_task().unwrap().pid.0
-    );
+    trace!("kernel:pid[{}] sys_get_time", current_task().unwrap().pid.0);
 
     let t = timer::get_time_us();
     let ts = TimeVal {
@@ -152,11 +150,7 @@ pub fn sys_task_info(_ti: *mut TaskInfo) -> isize {
 
 /// YOUR JOB: Implement mmap.
 pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
-    trace!(
-        "kernel:pid[{}] sys_mmap NOT IMPLEMENTED",
-        current_task().unwrap().pid.0
-    );
-
+    debug!("kernel:pid[{}] sys_mmap start {:x} len {:x}", current_task().unwrap().pid.0, _start, _len);
     if _start > config::MEMORY_END {
         return -1;
     }
@@ -170,15 +164,14 @@ pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
     let start = VirtAddr::from(_start);
     let end = VirtAddr::from(_start + _len);
     let flags = _port << 1;
+    
+
     mmap(current_user_token(), start, end, flags as _)
 }
 
 /// YOUR JOB: Implement munmap.
 pub fn sys_munmap(_start: usize, _len: usize) -> isize {
-    trace!(
-        "kernel:pid[{}] sys_munmap NOT IMPLEMENTED",
-        current_task().unwrap().pid.0
-    );
+    trace!("kernel:pid[{}] sys_munmap", current_task().unwrap().pid.0);
     let start = VirtAddr::from(_start);
     let end = VirtAddr::from(_start + _len);
     munmap(current_user_token(), start, end)
@@ -197,11 +190,26 @@ pub fn sys_sbrk(size: i32) -> isize {
 /// YOUR JOB: Implement spawn.
 /// HINT: fork + exec =/= spawn
 pub fn sys_spawn(_path: *const u8) -> isize {
-    trace!(
-        "kernel:pid[{}] sys_spawn NOT IMPLEMENTED",
-        current_task().unwrap().pid.0
-    );
-    -1
+    let current_task = current_task().unwrap();
+    trace!("kernel:pid[{}] sys_spawn", current_task.pid.0);
+    let pid = sys_fork();
+    if pid < 0 {
+        return pid;
+    }
+    let token = current_user_token();
+    let path = translated_str(token, _path);
+    if let Some(data) = get_app_data_by_name(path.as_str()) {
+        for task in &current_task.inner_exclusive_access().children {
+            if task.pid.0 == pid as _ {
+                task.exec(data);
+                debug!("spawn pid: {pid}");
+                return pid;
+            }
+        }
+        -1
+    } else {
+        -1
+    }
 }
 
 // YOUR JOB: Set task priority.

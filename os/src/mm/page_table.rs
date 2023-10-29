@@ -226,7 +226,7 @@ pub fn mmap(token: usize, start: VirtAddr, end: VirtAddr, flags: u8) -> isize {
     let range = VPNRange::new(start.floor(), end.ceil());
     let mut page_table = PageTable::from_token(token);
     for vpn in range {
-        if let Some(pte) = page_table.find_pte(vpn) {
+        if let Some(pte) = page_table.translate(vpn) {
             if pte.is_valid() {
                 warn!("is valid");
                 return -1;
@@ -249,7 +249,7 @@ pub fn munmap(token: usize, start: VirtAddr, end: VirtAddr) -> isize {
     let range = VPNRange::new(start.floor(), end.ceil());
     let mut page_table = PageTable::from_token(token);
     for vpn in range {
-        if let Some(pte) = page_table.find_pte(vpn) {
+        if let Some(pte) = page_table.translate(vpn) {
             if pte.is_valid() {
                 page_table.unmap(vpn);
                 return 0;
