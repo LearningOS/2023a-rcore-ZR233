@@ -9,6 +9,9 @@ use alloc::sync::{Arc, Weak};
 use alloc::vec::Vec;
 use core::cell::RefMut;
 
+/// 初始优先级
+const DEFAULT_PRIORITY: usize = 16;
+const BIG_STRIDE: usize = 50000;
 /// Task control block structure
 ///
 /// Directly save the contents that will not change during running
@@ -68,6 +71,13 @@ pub struct TaskControlBlockInner {
 
     /// Program break
     pub program_brk: usize,
+
+
+    /// stride
+    pub stride: usize,
+
+    /// priority
+    pub priority: usize,
 }
 
 impl TaskControlBlockInner {
@@ -84,6 +94,10 @@ impl TaskControlBlockInner {
     }
     pub fn is_zombie(&self) -> bool {
         self.get_status() == TaskStatus::Zombie
+    }    
+    /// get pass
+    pub fn get_pass(&self)->usize{
+        BIG_STRIDE / self.priority
     }
 }
 
@@ -118,6 +132,8 @@ impl TaskControlBlock {
                     exit_code: 0,
                     heap_bottom: user_sp,
                     program_brk: user_sp,
+                    stride: 0,
+                    priority: DEFAULT_PRIORITY,
                 })
             },
         };
@@ -191,6 +207,8 @@ impl TaskControlBlock {
                     exit_code: 0,
                     heap_bottom: parent_inner.heap_bottom,
                     program_brk: parent_inner.program_brk,
+                    stride: 0,
+                    priority: DEFAULT_PRIORITY
                 })
             },
         });
@@ -205,6 +223,7 @@ impl TaskControlBlock {
         // **** release child PCB
         // ---- release parent PCB
     }
+
 
     /// get pid of process
     pub fn getpid(&self) -> usize {
