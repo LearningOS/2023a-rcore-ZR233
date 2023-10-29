@@ -1,4 +1,5 @@
 //! Implementation of [`PageTableEntry`] and [`PageTable`].
+use super::address::VPNRange;
 use super::{frame_alloc, FrameTracker, PhysAddr, PhysPageNum, StepByOne, VirtAddr, VirtPageNum};
 use alloc::string::String;
 use alloc::vec;
@@ -212,4 +213,33 @@ pub fn translated_refmut<T>(token: usize, ptr: *mut T) -> &'static mut T {
         .translate_va(VirtAddr::from(va))
         .unwrap()
         .get_mut()
+}
+/// mmap
+pub fn mmap(token: usize, start: VirtAddr, end: VirtAddr, flags: u8) -> isize {
+    if !start.aligned() {
+        return -1;
+    }
+    let mut flags = PTEFlags::from_bits(flags).unwrap();
+    flags |= PTEFlags::V;
+    flags |= PTEFlags::U;
+
+    let range = VPNRange::new(start.floor(), end.ceil());
+    let mut page_table = PageTable::from_token(token);
+    for vpn in range {
+        if let Some(pte) = page_table.find_pte(vpn) {
+            if pte.is_valid() {
+                warn!("is valid");
+                return -1;
+            }
+        }
+        match frame_alloc() {
+            Some(frame) => {
+                let ppn = frame.ppn;
+                page_table.map(vpn, ppn, flags);
+            }
+            None => return -1,
+        }
+    }
+
+    0
 }
