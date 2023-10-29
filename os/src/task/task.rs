@@ -11,7 +11,7 @@ use core::cell::RefMut;
 
 /// 初始优先级
 const DEFAULT_PRIORITY: usize = 16;
-const BIG_STRIDE: usize = 50000;
+const BIG_STRIDE: usize = 1024;
 /// Task control block structure
 ///
 /// Directly save the contents that will not change during running
