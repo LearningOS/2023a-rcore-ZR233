@@ -243,3 +243,18 @@ pub fn mmap(token: usize, start: VirtAddr, end: VirtAddr, flags: u8) -> isize {
 
     0
 }
+
+/// munmap
+pub fn munmap(token: usize, start: VirtAddr, end: VirtAddr) -> isize {
+    let range = VPNRange::new(start.floor(), end.ceil());
+    let mut page_table = PageTable::from_token(token);
+    for vpn in range {
+        if let Some(pte) = page_table.find_pte(vpn) {
+            if pte.is_valid() {
+                page_table.unmap(vpn);
+                return 0;
+            }
+        }
+    }
+    -1
+}

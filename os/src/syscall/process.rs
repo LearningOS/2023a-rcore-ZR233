@@ -4,7 +4,7 @@ use alloc::sync::Arc;
 use crate::{
     config::{MAX_SYSCALL_NUM, self},
     loader::get_app_data_by_name,
-    mm::{mmap, translated_refmut, translated_str, VirtAddr},
+    mm::{mmap, translated_refmut, translated_str, VirtAddr, munmap},
     task::{
         add_task, current_task, current_user_token, exit_current_and_run_next,
         suspend_current_and_run_next, TaskStatus,
@@ -179,7 +179,9 @@ pub fn sys_munmap(_start: usize, _len: usize) -> isize {
         "kernel:pid[{}] sys_munmap NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+    let start = VirtAddr::from(_start);
+    let end = VirtAddr::from(_start + _len);
+    munmap(current_user_token(), start, end)
 }
 
 /// change data segment size
