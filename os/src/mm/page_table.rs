@@ -276,3 +276,8 @@ impl Iterator for UserBufferIterator {
         }
     }
 }
+/// find_pte
+pub fn find_pte(token: usize,  vpn: VirtPageNum)-> Option<PageTableEntry>{
+    let page_table = PageTable::from_token(token);
+    page_table.translate(vpn)
+}

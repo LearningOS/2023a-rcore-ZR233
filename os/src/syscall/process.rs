@@ -3,13 +3,14 @@
 use alloc::sync::Arc;
 
 use crate::{
-    config::MAX_SYSCALL_NUM,
+    config::{self, MAX_SYSCALL_NUM},
     fs::{open_file, OpenFlags},
-    mm::{translated_refmut, translated_str},
+    mm::{find_pte, translated_refmut, translated_str, MapPermission, VPNRange, VirtAddr},
     task::{
         add_task, current_task, current_user_token, exit_current_and_run_next,
         suspend_current_and_run_next, TaskStatus,
     },
+    timer,
 };
 
 #[repr(C)]
@@ -122,7 +123,15 @@ pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
         "kernel:pid[{}] sys_get_time NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+    let t = timer::get_time_us();
+    let ts = TimeVal {
+        sec: t / 1000_000,
+        usec: t % 1000_000,
+    };
+    let ptr = translated_refmut(current_user_token(), _ts);
+
+    *ptr = ts;
+    0
 }
 
 /// YOUR JOB: Finish sys_task_info to pass testcases
@@ -142,7 +151,43 @@ pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
         "kernel:pid[{}] sys_mmap NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+    if _start > config::MEMORY_END {
+        return -1;
+    }
+
+    if _port & !0x7 != 0 {
+        return -1;
+    }
+    if _port & 0x7 == 0 {
+        return -1;
+    }
+    let start = VirtAddr::from(_start);
+    if !start.aligned(){
+        return  -1;
+    }
+    let end = VirtAddr::from(_start + _len);
+    let flags = _port << 1;
+    let mut permission = MapPermission::from_bits(flags as _).unwrap();
+    permission |= MapPermission::U;
+    let token = current_user_token();
+    let start_vpn = start.floor();
+    let end_vpn = end.ceil();
+    let range = VPNRange::new(start_vpn, end_vpn);
+    for vpn in range {
+        if let Some(pte) = find_pte(token, vpn) {
+            if pte.is_valid() {
+                return -1;
+            }
+        }
+    }
+
+    current_task()
+        .unwrap()
+        .inner_exclusive_access()
+        .memory_set
+        .insert_framed_area(start, end, permission);
+
+    0
 }
 
 /// YOUR JOB: Implement munmap.
@@ -151,7 +196,29 @@ pub fn sys_munmap(_start: usize, _len: usize) -> isize {
         "kernel:pid[{}] sys_munmap NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+    let token = current_user_token();
+    let start = VirtAddr::from(_start);
+      if !start.aligned(){
+            return  -1;
+        }
+    let end = VirtAddr::from(_start + _len);
+    let start_vpn = start.floor();
+    let end_vpn = end.ceil();
+    let range = VPNRange::new(start_vpn, end_vpn);
+    for vpn in range {
+        if let Some(pte) = find_pte(token, vpn) {
+            if !pte.is_valid() {
+                return -1;
+            }
+        }
+    }
+    current_task()
+        .unwrap()
+        .inner_exclusive_access()
+        .memory_set
+        .remove_area_with_start_vpn(start_vpn);
+
+    0
 }
 
 /// change data segment size
@@ -167,11 +234,29 @@ pub fn sys_sbrk(size: i32) -> isize {
 /// YOUR JOB: Implement spawn.
 /// HINT: fork + exec =/= spawn
 pub fn sys_spawn(_path: *const u8) -> isize {
-    trace!(
-        "kernel:pid[{}] sys_spawn NOT IMPLEMENTED",
-        current_task().unwrap().pid.0
-    );
-    -1
+    trace!("kernel:pid[{}] sys_spawn", current_task().unwrap().pid.0);
+
+    let pid = sys_fork();
+    if pid < 0 {
+        return pid;
+    }
+    let current_task = current_task().unwrap();
+    let token = current_user_token();
+    let path = translated_str(token, _path);
+    debug!("kernel:pid[{}] sys_spawn name:{}", current_task.pid.0, path);
+    if let Some(file) = open_file(path.as_str(), OpenFlags::RDONLY) {
+        let data = file.read_all();
+        for task in &current_task.inner_exclusive_access().children {
+            if task.pid.0 == pid as _ {
+                task.exec(data.as_slice());
+                debug!("spawn pid: {pid}");
+                return pid;
+            }
+        }
+        -1
+    } else {
+        -1
+    }
 }
 
 // YOUR JOB: Set task priority.
