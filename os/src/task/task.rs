@@ -1,10 +1,12 @@
 //! Types related to task management & Functions for completely changing TCB
 use super::TaskContext;
 use super::{kstack_alloc, pid_alloc, KernelStack, PidHandle};
-use crate::config::TRAP_CONTEXT_BASE;
+use crate::config::{MAX_SYSCALL_NUM, TRAP_CONTEXT_BASE};
 use crate::fs::{File, Stdin, Stdout};
 use crate::mm::{MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE};
 use crate::sync::UPSafeCell;
+use crate::syscall::TaskInfo;
+use crate::timer::get_time_ms;
 use crate::trap::{trap_handler, TrapContext};
 use alloc::sync::{Arc, Weak};
 use alloc::vec;
@@ -79,6 +81,11 @@ pub struct TaskControlBlockInner {
 
     /// priority
     pub priority: usize,
+
+    /// Task start at ms ts
+    pub start_at: usize,
+    /// Task syscall times
+    pub syscall_times: [u32; MAX_SYSCALL_NUM],
 }
 
 impl TaskControlBlockInner {
@@ -149,6 +156,8 @@ impl TaskControlBlock {
                     program_brk: user_sp,
                     stride: 0,
                     priority: DEFAULT_PRIORITY,
+                    start_at: get_time_ms(),
+                    syscall_times: [0u32; MAX_SYSCALL_NUM],
                 })
             },
         };
@@ -232,6 +241,8 @@ impl TaskControlBlock {
                     program_brk: parent_inner.program_brk,
                     stride: 0,
                     priority: DEFAULT_PRIORITY,
+                    start_at: get_time_ms(),
+                    syscall_times: [0u32; MAX_SYSCALL_NUM],
                 })
             },
         });
@@ -276,6 +287,23 @@ impl TaskControlBlock {
         } else {
             None
         }
+    }
+    /// info
+    pub fn info(&self) -> TaskInfo {
+        let inner = self.inner.exclusive_access();
+        let status = inner.task_status;
+        let syscall_times = inner.syscall_times;
+        let start_at = inner.start_at;
+        TaskInfo {
+            status,
+            syscall_times,
+            time: get_time_ms() - start_at,
+        }
+    }
+    /// current_syscall_add
+    pub fn syscall_add(&self, syscall_index: usize) {
+        let mut inner = self.inner.exclusive_access();
+        inner.syscall_times[syscall_index] += 1;
     }
 }
 

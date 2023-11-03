@@ -24,11 +24,11 @@ pub struct TimeVal {
 #[allow(dead_code)]
 pub struct TaskInfo {
     /// Task status in it's life cycle
-    status: TaskStatus,
+    pub status: TaskStatus,
     /// The numbers of syscall called by task
-    syscall_times: [u32; MAX_SYSCALL_NUM],
+    pub syscall_times: [u32; MAX_SYSCALL_NUM],
     /// Total running time of task
-    time: usize,
+    pub time: usize,
 }
 
 pub fn sys_exit(exit_code: i32) -> ! {
@@ -142,7 +142,14 @@ pub fn sys_task_info(_ti: *mut TaskInfo) -> isize {
         "kernel:pid[{}] sys_task_info NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+    let token = current_user_token();
+    let ti = translated_refmut(token, _ti);    
+    let task = current_task().unwrap();
+    let info = task.info();
+    ti.status= info.status;
+    ti.syscall_times=info.syscall_times;
+    ti.time=info.time;
+    0
 }
 
 /// YOUR JOB: Implement mmap.
